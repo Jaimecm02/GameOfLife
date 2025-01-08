@@ -3,45 +3,66 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.signal import convolve2d
 from dataclasses import dataclass
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Callable
+from enum import Enum
+import tkinter as tk
+from tkinter import ttk
+
+class InitializerType(Enum):
+    RANDOM = "Random Clusters"
+    SPIRAL = "Spiral Pattern"
+    CROSS = "Cross Pattern"
+    SYMMETRICAL = "Symmetrical Pattern"
+    DENSE_CENTER = "Dense Center"
 
 @dataclass
 class LeniaConfig:
     """Configuration settings for Lenia."""
     size: int
     initial_live_probability: float
-    time_step: float = 0.05       # Slower updates for stability
+    time_step: float = 0.05
     kernel_radius: int = 13
-    growth_center: float = 0.135  # Adjusted for better stability
-    growth_width: float = 0.025   # Wider growth range
+    growth_center: float = 0.135
+    growth_width: float = 0.025
     kernel_rings: int = 4
     save_frames: bool = False
     output_dir: str = 'lenia_output'
-    color_scheme: str = 'plasma'  # Added color scheme parameter
-    blur_factor: float = 0.2      # For motion trails
+    color_scheme: str = 'plasma'
+    blur_factor: float = 0.2
+    initializer_type: InitializerType = InitializerType.RANDOM
 
 class Lenia:
     def __init__(self, config: LeniaConfig):
         self.config = config
+        self.initializer_functions = {
+            InitializerType.RANDOM: self._create_random_clusters,
+            InitializerType.SPIRAL: self._create_spiral_pattern,
+            InitializerType.CROSS: self._create_cross_pattern,
+            InitializerType.SYMMETRICAL: self._create_symmetrical_pattern,
+            InitializerType.DENSE_CENTER: self._create_dense_center_pattern,
+        }
         self.grid = self._initialize_grid()
         self.kernel = self._create_kernel()
         self.frame_count = 0
-        self.trail_buffer = np.zeros_like(self.grid)  # Added for motion trails
+        self.trail_buffer = np.zeros_like(self.grid)
         
     def _initialize_grid(self) -> np.ndarray:
-        """Initialize the grid with a stable pattern."""
+        """Initialize the grid using the selected initializer."""
+        initializer = self.initializer_functions[self.config.initializer_type]
+        return initializer()
+
+    def _create_dense_center_pattern(self) -> np.ndarray:
+        """Create a dense center pattern."""
         grid = np.zeros((self.config.size, self.config.size))
         center = self.config.size // 2
         pattern_size = self.config.size // 5
         
-        # Create a more dense central pattern
         for _ in range(pattern_size * 2):
             x = center + np.random.randint(-pattern_size//2, pattern_size//2)
             y = center + np.random.randint(-pattern_size//2, pattern_size//2)
             if 0 <= x < self.config.size and 0 <= y < self.config.size:
                 grid[y, x] = np.random.random() * 0.5 + 0.5
                 
-                # Add some neighboring cells for stability
                 for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
                     nx, ny = x + dx, y + dy
                     if 0 <= nx < self.config.size and 0 <= ny < self.config.size:
@@ -98,18 +119,14 @@ class Lenia:
         center = self.config.size // 2
         pattern_size = self.config.size // 6
         
-        # Create one quarter of the pattern
         quarter = np.random.random((pattern_size, pattern_size)) < 0.3
-        
-        # Mirror horizontally and vertically
         half = np.hstack((quarter, np.fliplr(quarter)))
         full = np.vstack((half, np.flipud(half)))
         
-        # Place in center of grid
         start = center - pattern_size
         grid[start:start+2*pattern_size, start:start+2*pattern_size] = full
         return grid
-    
+
     def _create_kernel(self) -> np.ndarray:
         """Create a more complex kernel with varying ring weights."""
         radius = self.config.kernel_radius
@@ -174,8 +191,8 @@ class LeniaVisualizer:
         # Initialize grid display with enhanced colormap
         self.img = self.grid_ax.imshow(
             lenia.grid,
-            cmap='magma',
-            interpolation='nearest'  # Changed from 'gaussian' to 'nearest' for better performance
+            cmap=lenia.config.color_scheme,
+            interpolation='nearest'
         )
         
         # Add subtle grid lines
@@ -192,11 +209,10 @@ class LeniaVisualizer:
         plt.colorbar(self.img, ax=self.grid_ax, fraction=0.046, pad=0.04)
         
     def update(self, frame):
-        """Update visualization with enhanced effects."""
+        """Update visualization with the next generation."""
         grid = self.lenia.update()
         self.img.set_array(grid)
         self.title.set_text(f'Lenia Evolution - Generation {self.lenia.frame_count}')
-        
         return [self.img, self.title]
         
     def animate(self, frames: int = 1000):
@@ -209,26 +225,60 @@ class LeniaVisualizer:
         )
         return ani
 
+class LeniaApp:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Lenia Simulation")
+        
+        # Configure frame
+        self.frame = ttk.Frame(self.root, padding="10")
+        self.frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create dropdown for pattern selection
+        self.pattern_var = tk.StringVar()
+        pattern_label = ttk.Label(self.frame, text="Select Pattern:")
+        pattern_label.grid(row=0, column=0, padx=5, pady=5)
+        
+        pattern_dropdown = ttk.Combobox(self.frame, textvariable=self.pattern_var)
+        pattern_dropdown['values'] = [pattern.value for pattern in InitializerType]
+        pattern_dropdown.set(InitializerType.RANDOM.value)
+        pattern_dropdown.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Start button
+        start_button = ttk.Button(self.frame, text="Start Simulation", command=self.start_simulation)
+        start_button.grid(row=1, column=0, columnspan=2, pady=10)
+
+    def start_simulation(self):
+        # Get selected pattern type
+        selected_pattern = self.pattern_var.get()
+        initializer_type = next(t for t in InitializerType if t.value == selected_pattern)
+        
+        # Create configuration
+        config = LeniaConfig(
+            size=100,
+            initial_live_probability=0.1,
+            time_step=0.05,
+            kernel_radius=5,
+            growth_center=0.135,
+            growth_width=0.025,
+            kernel_rings=2,
+            color_scheme='plasma',
+            blur_factor=0.2,
+            initializer_type=initializer_type
+        )
+        
+        # Create and start visualization
+        lenia = Lenia(config)
+        visualizer = LeniaVisualizer(lenia)
+        ani = visualizer.animate(frames=1000)
+        plt.show()
+
+    def run(self):
+        self.root.mainloop()
+
 def main():
-    # Create configuration with enhanced visual parameters
-    config = LeniaConfig(
-        size=50,
-        initial_live_probability=0.05,
-        time_step=0.05,        # Slower time step
-        kernel_radius=5,
-        growth_center=0.135,   # Adjusted growth center
-        growth_width=0.025,    # Wider growth width
-        kernel_rings=2,
-        save_frames=False,
-        color_scheme='plasma',
-        blur_factor=0.2
-    )
-    
-    lenia = Lenia(config)
-    visualizer = LeniaVisualizer(lenia)
-    ani = visualizer.animate(frames=1000)
-    
-    plt.show()
+    app = LeniaApp()
+    app.run()
 
 if __name__ == "__main__":
     main()
