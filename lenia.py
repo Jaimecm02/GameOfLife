@@ -4,9 +4,6 @@ from matplotlib.animation import FuncAnimation
 from scipy.signal import convolve2d
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
-import json
-import os
-import colorsys
 
 @dataclass
 class LeniaConfig:
@@ -187,7 +184,7 @@ class LeniaVisualizer:
         # Custom title styling
         self.title = self.grid_ax.set_title(
             'Lenia Evolution - Generation 0',
-            color='white',
+            color='w',
             pad=10
         )
         
@@ -197,10 +194,10 @@ class LeniaVisualizer:
     def update(self, frame):
         """Update visualization with enhanced effects."""
         grid = self.lenia.update()
-        self.img.set_array(grid)  # Changed from set_data to set_array
+        self.img.set_array(grid)
         self.title.set_text(f'Lenia Evolution - Generation {self.lenia.frame_count}')
         
-        return [self.img]
+        return [self.img, self.title]
         
     def animate(self, frames: int = 1000):
         """Create and display the animation."""
@@ -209,20 +206,19 @@ class LeniaVisualizer:
             self.update,
             frames=frames,
             interval=self.interval,
-            blit=True
         )
         return ani
 
 def main():
     # Create configuration with enhanced visual parameters
     config = LeniaConfig(
-        size=200,
-        initial_live_probability=0.3,
+        size=50,
+        initial_live_probability=0.05,
         time_step=0.05,        # Slower time step
-        kernel_radius=13,
+        kernel_radius=5,
         growth_center=0.135,   # Adjusted growth center
         growth_width=0.025,    # Wider growth width
-        kernel_rings=4,
+        kernel_rings=2,
         save_frames=False,
         color_scheme='plasma',
         blur_factor=0.2
